@@ -203,3 +203,6 @@ audio { width: 100%; height: 44px; }
 .foto-add { aspect-ratio: 1; border-radius: 14px; border: 1.5px dashed #9AA6BD; color: var(--blue-link); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 800; cursor: pointer; background: transparent; }
 .mini-card { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; flex-shrink: 0; background: var(--soft); }
 .visor img { width: 100%; max-height: 68vh; object-fit: contain; border-radius: 16px; background: #0F1628; }
+
+.girando { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--line-2); border-top-color: var(--blue); animation: girar .8s linear infinite; flex-shrink: 0; }
+@keyframes girar { to { transform: rotate(360deg); } }

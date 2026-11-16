@@ -300,6 +300,35 @@ async function bajarArchivosFaltantes() {
   return alguno;
 }
 
+/* ---------------- transcripción (Groq vía Supabase) ---------------- */
+const ERRORES_TRANS = {
+  sin_sesion: 'Para pasar la voz a texto, entrá con tu cuenta en Ajustes.',
+  falta_clave: 'Falta guardar la clave de Groq en Supabase.',
+  clave_invalida: 'La clave de Groq no es válida. Revisala en Supabase.',
+  limite: 'Hiciste muchas transcripciones seguidas. Probá de nuevo en un rato.',
+  muy_grande: 'La nota de voz es demasiado larga para transcribirla.',
+  sin_audio: 'No encontré el audio.'
+};
+export const puedeTranscribirOnline = () => !!(sb && usuario);
+export async function transcribir(blob) {
+  if (!sb || !usuario) throw new Error(ERRORES_TRANS.sin_sesion);
+  if (!navigator.onLine) throw new Error('Sin internet. Probá de nuevo cuando tengas conexión.');
+  const { data } = await sb.auth.getSession();
+  const token = data.session && data.session.access_token;
+  if (!token) throw new Error(ERRORES_TRANS.sin_sesion);
+  const tipo = blob.type || '';
+  const ext = tipo.includes('webm') ? 'webm' : tipo.includes('ogg') ? 'ogg' : tipo.includes('wav') ? 'wav' : 'm4a';
+  const fd = new FormData();
+  fd.append('audio', blob, 'nota.' + ext);
+  let r;
+  try {
+    r = await fetch(SB_URL + '/functions/v1/transcribir', { method: 'POST', headers: { Authorization: 'Bearer ' + token, apikey: SB_KEY }, body: fd });
+  } catch (e) { throw new Error('No hay conexión con el servidor.'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(ERRORES_TRANS[j.error] || 'No se pudo pasar a texto. Probá de nuevo.');
+  return j.texto || '';
+}
+
 /* ---------------- cuándo sincronizar ---------------- */
 export function arrancarAutomatico() {
   window.addEventListener('online', () => sincronizar());

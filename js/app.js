@@ -428,13 +428,12 @@ function htmlCaptura() {
   }
   const ayuda = B.grabando ? 'Grabando… tocá para terminar.' :
     melodia ? 'Tarareá o cantá. Se guarda el audio tal cual.' :
-      puedeTranscribir ? 'Tocá y hablá. Lo paso a texto solo.' : 'Tocá y hablá. Se guarda tu nota de voz.';
+      'Tocá y hablá. Después lo paso a texto.';
   return `<div class="grabador">
     <button type="button" class="rec-btn ${melodia ? 'melodia' : 'voz'} ${B.grabando ? 'grabando' : ''}" data-a="grabar" aria-label="${B.grabando ? 'Terminar grabación' : 'Empezar a grabar'}">${B.grabando ? I.stop : (melodia ? I.melodia : I.voz).replace(/width="20" height="20"/, 'width="32" height="32"')}</button>
     ${B.grabando ? `<div class="fila"><div class="nivel" id="nivel">${'<i></i>'.repeat(18)}</div><span id="reloj" style="font-size:16px;font-weight:800;color:var(--melody-ink)">${formatoTiempo(B.segundos)}</span></div>` : ''}
     <span style="font-size:15px;font-weight:700;color:var(--ink-2);text-align:center">${ayuda}</span>
     ${!melodia && B.grabando && puedeTranscribir ? `<div class="transcripcion" id="trans">${h(B.transcripcion) || 'Te escucho…'}</div>` : ''}
-    ${!melodia && !B.grabando && esIOS ? '<span class="ayuda" style="text-align:center">En el iPhone se guarda el audio. Si preferís texto, usá "Escribir" y el micrófono del teclado.</span>' : ''}
   </div>`;
 }
 function htmlFotos(fotos, { quitar, agregar, ver }) {
@@ -464,13 +463,34 @@ A.nQuitarFoto = (el) => { UI.nueva.fotos = UI.nueva.fotos.filter((f) => f.id !==
 
 function htmlTranscripcion() {
   const B = UI.nueva;
-  if (!puedeTranscribir && !B.transcripcion) {
-    return `<div class="col" style="align-self:stretch"><label class="label" for="n-nota">Notas (opcional)</label>
-      <textarea id="n-nota" class="textarea" style="height:90px" placeholder="Algo para acordarte de qué se trata" data-in="nTrans">${h(B.transcripcion)}</textarea></div>`;
+  if (B.transcribiendo) {
+    return `<div class="transcripcion" style="display:flex;align-items:center;gap:10px"><span class="girando"></span>Pasando tu nota de voz a texto…</div>`;
   }
-  return `<div class="col" style="align-self:stretch"><label class="label" for="n-nota">Lo que dijiste <span style="font-weight:600;color:var(--muted-2)">(podés corregirlo)</span></label>
-    <textarea id="n-nota" class="textarea" style="height:110px" data-in="nTrans">${h(B.transcripcion)}</textarea></div>`;
+  const error = B.errorTrans ? `<div class="confirmar" style="align-self:stretch">${h(B.errorTrans)}
+      ${sync.puedeTranscribirOnline() ? '<button type="button" class="btn chico borde" style="background:#FFF" data-a="nTranscribir">Reintentar</button>' : '<a href="#/ajustes" class="btn chico borde" style="background:#FFF">Ir a Ajustes</a>'}</div>` : '';
+  return `${error}<div class="col" style="align-self:stretch"><label class="label" for="n-nota">Lo que dijiste <span style="font-weight:600;color:var(--muted-2)">(podés corregirlo)</span></label>
+    <textarea id="n-nota" class="textarea" style="height:110px" placeholder="${B.errorTrans ? 'Podés escribirlo a mano' : ''}" data-in="nTrans">${h(B.transcripcion)}</textarea></div>`;
 }
+
+function pedirTranscripcion() {
+  const B = UI.nueva;
+  if (!B || !B.audio) return;
+  if (!sync.puedeTranscribirOnline()) { B.errorTrans = 'Para pasar la voz a texto, entrá con tu cuenta en Ajustes.'; repintarCaptura(); return; }
+  const audio = B.audio;
+  B.transcribiendo = true; B.errorTrans = '';
+  repintarCaptura();
+  B.promTrans = sync.transcribir(audio.blob).then((texto) => {
+    if (UI.nueva !== B || B.audio !== audio) return;
+    B.transcripcion = texto;
+    if (!texto) B.errorTrans = 'No se entendió nada en la grabación.';
+  }).catch((e) => {
+    if (UI.nueva === B) B.errorTrans = e.message;
+  }).finally(() => {
+    B.transcribiendo = false; B.promTrans = null;
+    if (UI.nueva === B && enVista('nueva')) { repintarCaptura(); actualizarSugerencia(); }
+  });
+}
+A.nTranscribir = () => pedirTranscripcion();
 
 function htmlSeccionRama() {
   const B = UI.nueva;
@@ -571,12 +591,14 @@ A.grabar = async () => {
     B.grabando = false;
     if (res.blob.size < 200) { toast('La grabación quedó vacía, probá de nuevo'); repintarCaptura(); return; }
     B.audio = { blob: res.blob, duracion: res.duracion, tipo: B.tipo };
+    B.errorTrans = '';
     if (res.texto) B.transcripcion = res.texto;
     repintarCaptura();
+    if (B.tipo === 'voz' && !res.texto) pedirTranscripcion();
     actualizarSugerencia();
   }
 };
-A.regrabar = () => { const B = UI.nueva; B.audio = null; B.transcripcion = ''; repintarCaptura(); };
+A.regrabar = () => { const B = UI.nueva; B.audio = null; B.transcripcion = ''; B.errorTrans = ''; B.transcribiendo = false; repintarCaptura(); };
 A.elegirRama = (el) => {
   const B = UI.nueva;
   const r = rama(el.dataset.id);
@@ -620,11 +642,15 @@ A.salirNueva = () => { location.hash = '#/inicio'; };
 A.guardarNueva = async () => {
   const B = UI.nueva;
   if (B.grabando) { toast('Primero terminá la grabación'); return; }
-  const texto = B.tipo === 'texto' ? B.texto.trim() : (B.transcripcion || '').trim();
+  let texto = B.tipo === 'texto' ? B.texto.trim() : (B.transcripcion || '').trim();
   if (B.tipo === 'texto' && !texto && !B.titulo.trim() && !B.fotos.length) { toast('Escribí algo de tu idea'); document.getElementById('n-texto').focus(); return; }
   if (B.tipo !== 'texto' && !B.audio) { toast('Primero grabá ' + (B.tipo === 'melodia' ? 'la melodía' : 'la nota de voz')); return; }
   const btn = document.getElementById('btn-guardar');
   btn.disabled = true;
+  if (B.promTrans) { btn.textContent = 'Terminando de pasar a texto…'; await B.promTrans; }
+  if (B.tipo === 'voz') texto = (UI.nueva.transcripcion || '').trim();
+  clearTimeout(sugerirTimer);
+  actualizarSugerencia(false);
   const id = nuevoId();
   let audioId = null;
   if (B.audio) {
@@ -793,12 +819,32 @@ async function vDetalle(id) {
     const cont = document.getElementById('d-audio');
     if (cont && a) {
       const url = urlDe(a.blob);
-      cont.innerHTML = `<audio controls preload="metadata" src="${url}"></audio><span class="meta">${idea.tipo === 'melodia' ? 'Melodía' : 'Nota de voz'} · ${formatoTiempo(idea.duracion || 0)}</span>`;
+      cont.innerHTML = `<audio controls preload="metadata" src="${url}"></audio><div class="fila entre"><span class="meta">${idea.tipo === 'melodia' ? 'Melodía' : 'Nota de voz'} · ${formatoTiempo(idea.duracion || 0)}</span>
+        ${idea.tipo === 'voz' ? `<button type="button" class="link-btn" data-a="dTranscribir">${idea.texto ? 'Volver a pasar a texto' : 'Pasar a texto'}</button>` : ''}</div>`;
       cont.classList.add('col');
     } else if (cont) cont.innerHTML = '<span class="meta">No encontré el audio.</span>';
   }
 }
 const ideaActual = () => S.ideas.find((i) => i.id === ruta().id);
+A.dTranscribir = async (el) => {
+  const idea = ideaActual();
+  const a = await db.obtener('audios', idea.audioId);
+  if (!a) { toast('No encontré el audio'); return; }
+  el.disabled = true; el.textContent = 'Pasando a texto…';
+  try {
+    const texto = await sync.transcribir(a.blob);
+    if (!texto) { toast('No se entendió nada en la grabación'); el.disabled = false; el.textContent = 'Pasar a texto'; return; }
+    const tituloAuto = /^Nota de voz del /.test(idea.titulo);
+    idea.texto = texto;
+    if (tituloAuto) idea.titulo = tituloAutomatico(texto, 'voz');
+    await guardarIdea(idea);
+    toast('¡Listo! Ya está en texto');
+    if (enVista('idea')) vDetalle(idea.id);
+  } catch (e) {
+    toast(e.message);
+    el.disabled = false; el.textContent = 'Pasar a texto';
+  }
+};
 async function pintarFotosDetalle(idea) {
   const cont = document.getElementById('d-fotos');
   if (!cont) return;
