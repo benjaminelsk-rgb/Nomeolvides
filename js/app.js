@@ -1,6 +1,6 @@
 import { db, nuevoId } from './db.js';
 import { Grabadora, puedeGrabar, puedeTranscribir, formatoTiempo } from './recorder.js';
-import { describir, pendientes, crearICS, ORDEN_SEMANA, NOMBRES_DIA } from './reminders.js';
+import { describir, pendientes, crearICS, proxima, fechaCorta, ORDEN_SEMANA, NOMBRES_DIA } from './reminders.js';
 import { sugerirRama, sugerirRamita, tituloAutomatico } from './suggest.js';
 import * as sync from './sync.js';
 
@@ -164,6 +164,10 @@ function render() {
   liberarUrls();
   cerrarSheet();
   document.body.classList.toggle('sin-tabbar', vista === 'nueva');
+  const tabLat = { inicio: 'inicio', ideas: 'ideas', idea: 'ideas', ramas: 'ramas', ajustes: 'ajustes' }[vista];
+  document.querySelectorAll('#lateral .lat-link').forEach((t) => t.classList.toggle('activa', t.dataset.tab === tabLat));
+  document.querySelector('#lateral .lat-nueva').classList.toggle('activa', vista === 'nueva');
+  pintarLateral();
   document.querySelectorAll('#tabbar .tab').forEach((t) => t.classList.toggle('activa', t.dataset.tab === vista || (vista === 'idea' && t.dataset.tab === 'ideas') || (vista === 'ramas' && t.dataset.tab === 'ideas')));
   const vistas = { inicio: vInicio, nueva: vNueva, ideas: vIdeas, idea: vDetalle, ramas: vRamas, ajustes: vAjustes };
   (vistas[vista] || vInicio)(id);
@@ -171,6 +175,21 @@ function render() {
 }
 
 window.addEventListener('hashchange', render);
+
+function pintarLateral() {
+  const c = document.getElementById('lat-ramas');
+  if (!c) return;
+  const cuenta = (r) => S.ideas.filter((i) => i.ramaId === r.id).length;
+  c.innerHTML = S.ramas.length ? `<span class="lat-titulo">Tus ramas</span>` + S.ramas.map((r) =>
+    `<button type="button" class="lat-rama ${ruta().vista === 'ideas' && UI.ideas.rama === r.id ? 'activa' : ''}" data-a="latRama" data-id="${r.id}">
+      <span class="punto" style="width:10px;height:10px;background:${r.color}"></span><span class="grow">${h(r.nombre)}</span><span class="lat-num">${cuenta(r)}</span></button>`).join('') : '';
+}
+document.getElementById('lateral').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-a]');
+  if (!el) return;
+  const fn = A[el.dataset.a];
+  if (fn) { e.preventDefault(); fn(el, e); }
+});
 
 /* Acciones por delegación: data-a="nombre" */
 const A = {};
@@ -324,11 +343,15 @@ function vInicio() {
   const cand = candidatasRiego();
   const riego = cand.length ? cand[UI.inicio.riegoIdx % cand.length] : null;
 
+  const recientes = S.ideas.slice().sort((a, b) => b.creada - a.creada).slice(0, 6);
+  const proximos = S.ideas.flatMap((idea) => (idea.recordatorios || []).filter((r) => r.on).map((rec) => ({ idea, rec, cuando: proxima(rec) })))
+    .filter((p) => p.cuando).sort((a, b) => a.cuando - b.cuando).slice(0, 5);
   $app.innerHTML = `
-    <div class="fila entre header">
+    <div class="fila entre header solo-movil">
       <button type="button" class="fila marca-btn" data-a="recargar" aria-label="Actualizar la app">${I.logo}<span class="marca">nomeolvides</span></button>
       <a href="#/ajustes" class="icon-btn" aria-label="Ajustes">${I.engranaje}</a>
     </div>
+    <div class="inicio-grid"><div class="col-principal">
     <div class="col" style="gap:6px;margin-top:4px">
       <div class="saludo">${h(saludo())}</div>
       <div class="sub" style="font-size:17px">¿Qué se te ocurrió hoy?</div>
@@ -358,8 +381,21 @@ function vInicio() {
       </div></div>`
     : `<div class="card-oscura"><div class="eyebrow">${I.chispa('#F2C14E', 16)}TU PRIMERA SEMILLA</div>
       <div class="riego-titulo">${S.ideas.length ? '¡Todas tus ideas florecieron!' : 'Todavía no guardaste ninguna idea'}</div>
-      <div style="font-size:15px;font-weight:600;color:#C9D6F5">Tocá el botón + de abajo para guardar una idea, una nota de voz o una melodía.</div></div>`}
+      <div style="font-size:15px;font-weight:600;color:#C9D6F5">Tocá el botón + para guardar una idea, una nota de voz o una melodía.</div></div>`}
+    <div class="card col solo-pc" style="gap:10px;padding:20px;border-radius:24px">
+      <span style="font-size:15px;font-weight:800;color:var(--ink-2)">Próximos recordatorios</span>
+      ${proximos.length ? proximos.map((p) => `<a href="#/idea/${encodeURIComponent(p.idea.id)}" class="fila" style="gap:12px;padding:8px 0;border-top:1px solid #EEF1F6;color:var(--ink)">
+        ${I.campana}<span class="grow" style="font-size:15px;font-weight:800">${h(p.idea.titulo)}</span>
+        <span class="meta" style="white-space:nowrap">${h(fechaCorta(p.cuando))} · ${p.rec.hora}</span></a>`).join('')
+      : '<span class="ayuda" style="font-size:14px">No tenés recordatorios. Podés agregarlos desde cada idea.</span>'}
+    </div>
+    </div>
+    <aside class="solo-pc col-lateral">
+      <div class="fila entre"><span style="font-size:17px;font-weight:800">Últimas ideas</span>${S.ideas.length ? '<a href="#/ideas" class="link-btn" style="display:flex;align-items:center">Ver todas</a>' : ''}</div>
+      ${recientes.length ? recientes.map(htmlCardIdea).join('') : '<div class="vacio" style="padding:24px 8px">Acá vas a ver lo último que guardaste.</div>'}
+    </aside></div>
   `;
+  cargarMiniaturas();
 }
 A.recargar = async () => {
   toast('Actualizando…');
@@ -399,6 +435,7 @@ function vNueva() {
       <a href="#/inicio" class="icon-btn" aria-label="Volver al inicio" data-a="salirNueva">${I.atras}</a>
       <span class="titulo-pant">Nueva idea</span><span style="width:44px"></span>
     </div>
+    <div class="dos-col"><div class="col-a">
     <div class="seg" role="group" aria-label="Cómo guardar la idea">
       <button type="button" class="${B.tipo === 'texto' ? 'on' : ''}" data-a="tipo" data-t="texto">${I.texto}Escribir</button>
       <button type="button" class="${B.tipo === 'voz' ? 'on' : ''}" data-a="tipo" data-t="voz">${I.voz}Voz</button>
@@ -410,11 +447,13 @@ function vNueva() {
       <label class="label" for="n-titulo">Título <span style="font-weight:600;color:var(--muted-2)">(opcional)</span></label>
       <input id="n-titulo" class="input" type="text" placeholder="Si no le ponés, la app le pone uno" value="${h(B.titulo)}" data-in="nTitulo" maxlength="120">
     </div>
+    </div><div class="col-b">
     <div class="col" style="gap:10px" id="n-rama">${htmlSeccionRama()}</div>
     <div class="col" style="gap:10px">
       <div class="col" style="gap:2px"><span class="label">Recordámela</span><span class="ayuda">Poné los avisos que quieras, como alarmas.</span></div>
       <div id="n-recs">${htmlRecs(B.recs)}</div>
     </div>
+    </div></div>
     <div class="guardar-bar"><button type="button" class="btn" data-a="guardarNueva" id="btn-guardar">Guardar idea</button></div>
   `;
   limpiarVista = () => { if (grabadora) { grabadora.cancelar(); grabadora = null; UI.nueva.grabando = false; } };
@@ -714,8 +753,8 @@ function vIdeas() {
       <span style="position:absolute;left:14px;top:14px">${I.lupa}</span>
       <input id="buscar" class="input" type="search" placeholder="Buscar en tus ideas" style="padding-left:44px" value="${h(UI.ideas.q)}" data-in="buscar"></div>
     <div id="i-filtros"></div>
-    <div class="seg" role="group" aria-label="Filtrar por estado" id="i-estados"></div>
-    <div class="col" style="gap:10px" id="i-lista"></div>`;
+    <div class="seg seg-estados" role="group" aria-label="Filtrar por estado" id="i-estados"></div>
+    <div class="col lista-ideas" style="gap:10px" id="i-lista"></div>`;
   pintarFiltros();
   pintarLista();
 }
@@ -740,8 +779,17 @@ function pintarFiltros() {
   document.getElementById('i-estados').innerHTML = ['todas', 'semilla', 'brote', 'flor'].map((e) =>
     `<button type="button" class="${U.estado === e ? 'on' : ''}" data-a="iEstado" data-e="${e}" style="height:40px">${PLURAL[e]}</button>`).join('');
 }
+function htmlCardIdea(i) {
+  return `<a class="idea-card" href="#/idea/${encodeURIComponent(i.id)}">
+      <div class="tipo-ico t-${i.tipo}">${I[i.tipo]}</div>
+      <div class="grow col" style="gap:4px">
+        <span class="t">${h(i.titulo)}</span>
+        ${i.texto && i.texto !== i.titulo ? `<span class="n">${h(i.texto)}</span>` : (i.tipo !== 'texto' ? `<span class="n">${i.tipo === 'melodia' ? 'Melodía' : 'Nota de voz'} de ${formatoTiempo(i.duracion || 0)}</span>` : '')}
+        <div class="fila entre" style="margin-top:4px"><span class="meta">${h(ubicacion(i))} · ${hace(i.creada)}</span><span class="estado est-${i.estado}">${ESTADOS[i.estado]}</span></div>
+      </div>${(i.fotos || []).length ? `<img class="mini-card" data-foto="${i.fotos[0]}" alt="">` : ''}</a>`;
+}
 async function cargarMiniaturas() {
-  for (const img of document.querySelectorAll('#i-lista img[data-foto]')) {
+  for (const img of document.querySelectorAll('#app img[data-foto]')) {
     const f = await db.obtener('fotos', img.dataset.foto);
     if (f && img.isConnected) img.src = urlDe(f.blob);
   }
@@ -756,24 +804,23 @@ function pintarLista() {
     .filter((i) => !q || [i.titulo, i.texto, ubicacion(i), ...(i.notas || []).map((n) => n.texto)].join(' ').toLowerCase().includes(q))
     .sort((a, b) => b.creada - a.creada);
   document.getElementById('i-cuenta').textContent = lista.length + (lista.length === 1 ? ' idea' : ' ideas');
-  document.getElementById('i-lista').innerHTML = lista.length ? lista.map((i) => `
-    <a class="idea-card" href="#/idea/${encodeURIComponent(i.id)}">
-      <div class="tipo-ico t-${i.tipo}">${I[i.tipo]}</div>
-      <div class="grow col" style="gap:4px">
-        <span class="t">${h(i.titulo)}</span>
-        ${i.texto && i.texto !== i.titulo ? `<span class="n">${h(i.texto)}</span>` : (i.tipo !== 'texto' ? `<span class="n">${i.tipo === 'melodia' ? 'Melodía' : 'Nota de voz'} de ${formatoTiempo(i.duracion || 0)}</span>` : '')}
-        <div class="fila entre" style="margin-top:4px"><span class="meta">${h(ubicacion(i))} · ${hace(i.creada)}</span><span class="estado est-${i.estado}">${ESTADOS[i.estado]}</span></div>
-      </div>${(i.fotos || []).length ? `<img class="mini-card" data-foto="${i.fotos[0]}" alt="">` : ''}</a>`).join('')
+  document.getElementById('i-lista').innerHTML = lista.length ? lista.map(htmlCardIdea).join('')
     : `<div class="vacio">${S.ideas.length ? 'No hay ideas con este filtro.' : 'Todavía no guardaste ideas. Tocá + para la primera.'}</div>`;
   cargarMiniaturas();
 }
+A.latRama = (el) => {
+  const r = rama(el.dataset.id);
+  if (!r) return;
+  Object.assign(UI.ideas, { rama: r.id, ramita: 'todas', verRamitas: r.ramitas.length > 0 });
+  if (enVista('ideas')) { pintarFiltros(); pintarLista(); pintarLateral(); } else location.hash = '#/ideas';
+};
 A.buscar = (el) => { UI.ideas.q = el.value; pintarLista(); };
 A.iRama = (el) => {
   const U = UI.ideas;
   U.rama = el.dataset.id; U.ramita = 'todas';
   const r = rama(U.rama);
   U.verRamitas = !!(r && r.ramitas.length);
-  pintarFiltros(); pintarLista();
+  pintarFiltros(); pintarLista(); pintarLateral();
 };
 A.iVolver = () => { UI.ideas.verRamitas = false; UI.ideas.ramita = 'todas'; pintarFiltros(); pintarLista(); };
 A.iRamita = (el) => { UI.ideas.ramita = el.dataset.m || 'todas'; pintarFiltros(); pintarLista(); };
@@ -797,6 +844,7 @@ async function vDetalle(id) {
       <a href="#/ideas" class="icon-btn" aria-label="Volver a mis ideas">${I.atras}</a>
       <button type="button" class="icon-btn" aria-label="Más opciones" data-a="dMenu">${I.puntos}</button>
     </div>
+    <div class="dos-col det-grid"><div class="col-a">
     <div class="col">
       <button type="button" class="tag-rama" data-a="dRama">${r ? `<span class="punto" style="width:10px;height:10px;background:${r.color}"></span>` : ''}${h(ubicacion(idea))}${I.chevron}</button>
       <div style="font-size:26px;font-weight:800;letter-spacing:-.4px;line-height:1.2">${h(idea.titulo)}</div>
@@ -805,6 +853,7 @@ async function vDetalle(id) {
     ${idea.audioId ? '<div class="card" id="d-audio" style="padding:12px 14px"><span class="meta">Cargando audio…</span></div>' : ''}
     ${idea.texto && idea.texto !== idea.titulo ? `<div class="card" style="font-size:16px;font-weight:600;line-height:1.5;white-space:pre-wrap">${h(idea.texto)}</div>` : ''}
     ${idea.tipo !== 'melodia' || (idea.fotos || []).length ? `<div class="col" style="gap:10px"><span style="font-size:16px;font-weight:800">Fotos</span><div id="d-fotos"></div></div>` : ''}
+    </div><div class="col-b">
     <div class="card col" style="gap:10px">
       <span class="label">¿En qué estado está?</span>
       <div class="estados" role="group" aria-label="Estado de la idea">
@@ -824,7 +873,8 @@ async function vDetalle(id) {
       <div class="col" style="gap:2px"><span style="font-size:16px;font-weight:800">Recordatorios</span>
       <span class="ayuda">Con ${I.calendario.replace(/19/g, '14')} lo sumás al calendario de tu celular para que te avise aunque la app esté cerrada.</span></div>
       <div id="d-recs">${htmlRecs(idea.recordatorios || [], { conCalendario: true })}</div>
-    </div>`;
+    </div>
+    </div></div>`;
   document.getElementById('d-nota').addEventListener('keydown', (e) => { if (e.key === 'Enter') A.dNota(); });
   pintarFotosDetalle(idea);
   if (idea.audioId) {
@@ -1001,7 +1051,7 @@ function vRamas() {
   const paleta = (sel, accion, extra = '') => `<div class="paleta" role="group" aria-label="Color de la rama">${PALETA.map(([c, n]) =>
     `<button type="button" class="color" style="background:${c};${sel === c ? 'box-shadow:0 0 0 2.5px ' + c : ''}" aria-label="${n}" aria-pressed="${sel === c}" data-a="${accion}" data-c="${c}" ${extra}></button>`).join('')}</div>`;
   $app.innerHTML = `
-    <div class="fila entre header"><a href="#/ideas" class="icon-btn" aria-label="Volver a mis ideas">${I.atras}</a><span class="titulo-pant">Mis ramas</span><span style="width:44px"></span></div>
+    <div class="fila entre header header-top"><a href="#/ideas" class="icon-btn solo-movil" aria-label="Volver a mis ideas">${I.atras}</a><span class="titulo-pant">Mis ramas</span><span class="solo-movil" style="width:44px"></span></div>
     <div style="font-size:15px;font-weight:600;color:var(--muted);line-height:1.45">Ordená tus ideas como quieras. Dentro de cada rama podés tener <b style="color:var(--ink)">ramitas</b>: por ejemplo, una por cada negocio o por cada canción.</div>
     <button type="button" class="chip nueva" style="height:52px;border-radius:16px;justify-content:center;color:var(--blue-link);font-size:16px" data-a="rNuevaToggle">${I.mas}Nueva rama</button>
     ${U.nueva ? `<div class="card col" style="gap:12px;border:1.5px solid var(--blue)">
@@ -1010,7 +1060,7 @@ function vRamas() {
       <span class="label">Color</span>${paleta(U.nuevaColor, 'rNuevaColor')}
       <button type="button" class="btn chico" style="height:48px;border-radius:24px" data-a="rCrear">Crear rama</button></div>` : ''}
     ${S.ramas.length ? '' : '<div class="vacio">No tenés ramas. Creá la primera.</div>'}
-    ${S.ramas.map((r) => `<div class="rama-card">
+    <div class="ramas-grid">${S.ramas.map((r) => `<div class="rama-card">
       <div class="fila" style="gap:6px">
         <button type="button" class="icon-btn plano" style="width:40px" aria-label="Cambiar color de ${h(r.nombre)}" data-a="rColorToggle" data-id="${r.id}"><span class="punto" style="background:${r.color}"></span></button>
         ${U.editando === r.id ? `<label for="r-ren" class="sr-only">Nuevo nombre</label><input id="r-ren" class="input grow" style="height:44px;border-color:var(--blue);font-weight:700" value="${h(r.nombre)}" maxlength="40" autofocus>
@@ -1029,7 +1079,7 @@ function vRamas() {
       ${U.agregando === r.id ? `<div class="fila" style="gap:8px;padding-left:6px"><label for="r-ramita" class="sr-only">Nombre de la ramita</label>
         <input id="r-ramita" class="input grow" style="height:44px" placeholder="Nombre de la ramita" maxlength="40" autofocus>
         <button type="button" class="btn chico" data-a="rRamitaOk" data-id="${r.id}">Agregar</button></div>` : ''}
-    </div>`).join('')}`;
+    </div>`).join('')}</div>`;
   const f = $app.querySelector('[autofocus]');
   if (f) f.focus();
   const ren = document.getElementById('r-ren');
@@ -1095,7 +1145,8 @@ A.rQuitarRamita = async (el) => {
 function vAjustes() {
   const notif = 'Notification' in window;
   $app.innerHTML = `
-    <div class="fila entre header"><a href="#/inicio" class="icon-btn" aria-label="Volver al inicio">${I.atras}</a><span class="titulo-pant">Ajustes</span><span style="width:44px"></span></div>
+    <div class="fila entre header header-top"><a href="#/inicio" class="icon-btn solo-movil" aria-label="Volver al inicio">${I.atras}</a><span class="titulo-pant">Ajustes</span><span class="solo-movil" style="width:44px"></span></div>
+    <div class="ajustes-grid">
     <div class="card col" style="gap:10px" id="a-cuenta">${htmlCuenta()}</div>
     <div class="card col" style="gap:10px">
       <label class="label" for="a-nombre">¿Cómo te llamás?</label>
@@ -1121,7 +1172,8 @@ function vAjustes() {
       <img src="icons/icon-192.png" alt="" width="56" height="56" style="border-radius:14px;border:1px solid var(--line)">
       <div class="col" style="gap:2px"><span style="font-size:17px;font-weight:800">Nomeolvides</span>
         <span style="font-size:14px;font-weight:600;color:var(--muted)">Creada por <b style="color:var(--ink)">Benjamin Elaskar Melo</b></span>
-        <span class="meta">Versión 2.1</span></div>
+        <span class="meta">Versión 2.2</span></div>
+    </div>
     </div>`;
   document.getElementById('a-importar').addEventListener('change', importar);
 }
