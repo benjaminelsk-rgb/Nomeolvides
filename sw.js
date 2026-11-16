@@ -1,5 +1,5 @@
 // Service worker: guarda la app para que funcione sin internet.
-const VERSION = 'nomeolvides-v1';
+const VERSION = 'nomeolvides-v2';
 const ARCHIVOS = [
   './',
   'index.html',

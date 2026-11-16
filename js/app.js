@@ -37,6 +37,7 @@ const I = {
   semilla: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20c-3.5 0-6-2.8-6-6.5S9 6 12 4c3 2 6 5.8 6 9.5S15.5 20 12 20z"/><path d="M12 9v7"/></svg>',
   brote: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-9"/><path d="M12 12c0-4-3-6-7-6 0 4 3 6 7 6z"/><path d="M12 11c0-3 2-5 6-5 0 3-2 5-6 5z"/></svg>',
   flor: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="2.2"/><circle cx="12" cy="6" r="3"/><circle cx="17.7" cy="10.1" r="3"/><circle cx="15.5" cy="16.9" r="3"/><circle cx="8.5" cy="16.9" r="3"/><circle cx="6.3" cy="10.1" r="3"/></svg>',
+  camara: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>',
   logo: '<svg width="36" height="36" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 38V25M20 27l-6-6M20 27l6-6" stroke="#7E7165" stroke-width="3.2" stroke-linecap="round" fill="none"/><path d="M3 19C3 9 11 4 20 4s17 5 17 15c-7-1.5-27-1.5-34 0z" fill="#4C7034"/><circle cx="12" cy="12.5" r="2.6" fill="#4F7FE6"/><circle cx="21" cy="8.5" r="2.6" fill="#4F7FE6"/><circle cx="28.5" cy="13" r="2.6" fill="#4F7FE6"/></svg>'
 };
 
@@ -61,6 +62,24 @@ function fechaNota(ts) {
 function hoyISO(offsetDias = 0) {
   const d = new Date(); d.setDate(d.getDate() + offsetDias);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+let urlsVista = [];
+function urlDe(blob) { const u = URL.createObjectURL(blob); urlsVista.push(u); return u; }
+function liberarUrls() { urlsVista.forEach((u) => URL.revokeObjectURL(u)); urlsVista = []; }
+
+async function comprimirFoto(file) {
+  const max = 1600;
+  let img;
+  try { img = await createImageBitmap(file); } catch (e) {
+    img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+  }
+  const w = img.width || img.naturalWidth, hh = img.height || img.naturalHeight;
+  const esc = Math.min(1, max / Math.max(w, hh));
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * esc); c.height = Math.round(hh * esc);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return new Promise((res) => c.toBlob((b) => res(b || file), 'image/jpeg', 0.82));
 }
 
 let toastTimer;
@@ -136,6 +155,7 @@ function ruta() {
 function render() {
   const { vista, id } = ruta();
   if (limpiarVista) { limpiarVista(); limpiarVista = null; }
+  liberarUrls();
   cerrarSheet();
   document.body.classList.toggle('sin-tabbar', vista === 'nueva');
   document.querySelectorAll('#tabbar .tab').forEach((t) => t.classList.toggle('activa', t.dataset.tab === vista || (vista === 'idea' && t.dataset.tab === 'ideas') || (vista === 'ramas' && t.dataset.tab === 'ideas')));
@@ -153,6 +173,12 @@ $app.addEventListener('click', (e) => {
   if (!el || !$app.contains(el)) return;
   const fn = A[el.dataset.a];
   if (fn) { e.preventDefault(); fn(el, e); }
+});
+$app.addEventListener('change', (e) => {
+  const el = e.target.closest('[data-ch]');
+  if (!el) return;
+  const fn = A[el.dataset.ch];
+  if (fn) fn(el, e);
 });
 $app.addEventListener('input', (e) => {
   const el = e.target.closest('[data-in]');
@@ -344,7 +370,7 @@ A.verTodosAvisos = async () => {
    NUEVA IDEA
    ===================================================================== */
 function nuevoBorrador() {
-  return { tipo: 'texto', texto: '', titulo: '', ramaId: null, ramaElegida: false, ramita: null, recs: [], audio: null,
+  return { tipo: 'texto', texto: '', titulo: '', ramaId: null, ramaElegida: false, ramita: null, recs: [], audio: null, fotos: [],
     verRamitas: false, creandoRama: false, creandoRamita: false, grabando: false, segundos: 0, transcripcion: '' };
 }
 
@@ -362,6 +388,7 @@ function vNueva() {
       <button type="button" class="${B.tipo === 'melodia' ? 'on' : ''}" data-a="tipo" data-t="melodia">${I.melodia}Melodía</button>
     </div>
     <div id="n-captura">${htmlCaptura()}</div>
+    <div id="n-fotos">${htmlFotosNueva()}</div>
     <div class="col">
       <label class="label" for="n-titulo">Título <span style="font-weight:600;color:var(--muted-2)">(opcional)</span></label>
       <input id="n-titulo" class="input" type="text" placeholder="Si no le ponés, la app le pone uno" value="${h(B.titulo)}" data-in="nTitulo" maxlength="120">
@@ -390,7 +417,7 @@ function htmlCaptura() {
   }
   if (B.audio && !B.grabando) {
     return `<div class="grabador">
-      <audio controls src="${B.audio.url}"></audio>
+      <audio controls src="${urlDe(B.audio.blob)}"></audio>
       <span class="meta">${melodia ? 'Melodía' : 'Nota de voz'} de ${formatoTiempo(B.audio.duracion)}</span>
       ${!melodia ? htmlTranscripcion() : ''}
       <button type="button" class="btn borde chico" data-a="regrabar">Grabar de nuevo</button></div>`;
@@ -406,6 +433,31 @@ function htmlCaptura() {
     ${!melodia && !B.grabando && esIOS ? '<span class="ayuda" style="text-align:center">En el iPhone se guarda el audio. Si preferís texto, usá "Escribir" y el micrófono del teclado.</span>' : ''}
   </div>`;
 }
+function htmlFotos(fotos, { quitar, agregar, ver }) {
+  return `<div class="fotos">${fotos.map((f) => `<div class="foto-mini">
+      <button type="button" style="all:unset;display:block;width:100%;height:100%;cursor:pointer" ${ver ? `data-a="${ver}" data-id="${f.id}" aria-label="Ver foto"` : 'tabindex="-1"'}><img src="${f.url}" alt=""></button>
+      <button type="button" class="quitar" aria-label="Quitar foto" data-a="${quitar}" data-id="${f.id}">${I.xs}</button></div>`).join('')}
+    <label class="foto-add">${I.camara}Agregar<input type="file" accept="image/*" multiple class="sr-only" data-ch="${agregar}"></label></div>`;
+}
+function htmlFotosNueva() {
+  const B = UI.nueva;
+  if (B.tipo === 'melodia') return '';
+  const fotos = B.fotos.map((f) => ({ id: f.id, url: urlDe(f.blob) }));
+  return `<div class="col"><span class="label">Fotos <span style="font-weight:600;color:var(--muted-2)">(opcional)</span></span>
+    ${htmlFotos(fotos, { quitar: 'nQuitarFoto', agregar: 'nAgregarFotos' })}</div>`;
+}
+const repintarFotosNueva = () => { document.getElementById('n-fotos').innerHTML = htmlFotosNueva(); };
+A.nAgregarFotos = async (el) => {
+  const files = [...el.files];
+  if (!files.length) return;
+  toast(files.length === 1 ? 'Agregando foto…' : 'Agregando fotos…');
+  for (const f of files) {
+    try { UI.nueva.fotos.push({ id: 'f-' + nuevoId(), blob: await comprimirFoto(f) }); } catch (e) { toast('No pude abrir una de las fotos'); }
+  }
+  if (enVista('nueva')) repintarFotosNueva();
+};
+A.nQuitarFoto = (el) => { UI.nueva.fotos = UI.nueva.fotos.filter((f) => f.id !== el.dataset.id); repintarFotosNueva(); };
+
 function htmlTranscripcion() {
   const B = UI.nueva;
   if (!puedeTranscribir && !B.transcripcion) {
@@ -456,7 +508,7 @@ function repintarCaptura() { document.getElementById('n-captura').innerHTML = ht
 let sugerirTimer;
 function actualizarSugerencia(repintar = true) {
   const B = UI.nueva;
-  if (B.ramaElegida) return;
+  if (!B || !enVista('nueva') || B.ramaElegida) return;
   const texto = [B.titulo, B.texto, B.transcripcion].join(' ');
   const id = sugerirRama(texto, B.tipo, S.ramas);
   if (id !== B.ramaSugerida || (id && B.ramaId !== id)) {
@@ -480,6 +532,7 @@ A.tipo = (el) => {
   if (B.audio && B.audio.tipo !== B.tipo) B.audio = null;
   document.querySelectorAll('.seg [data-a="tipo"]').forEach((b) => b.classList.toggle('on', b.dataset.t === B.tipo));
   repintarCaptura();
+  repintarFotosNueva();
   actualizarSugerencia();
 };
 A.grabar = async () => {
@@ -513,14 +566,13 @@ A.grabar = async () => {
     grabadora = null;
     B.grabando = false;
     if (res.blob.size < 200) { toast('La grabación quedó vacía, probá de nuevo'); repintarCaptura(); return; }
-    if (B.audio && B.audio.url) URL.revokeObjectURL(B.audio.url);
-    B.audio = { blob: res.blob, duracion: res.duracion, url: URL.createObjectURL(res.blob), tipo: B.tipo };
+    B.audio = { blob: res.blob, duracion: res.duracion, tipo: B.tipo };
     if (res.texto) B.transcripcion = res.texto;
     repintarCaptura();
     actualizarSugerencia();
   }
 };
-A.regrabar = () => { const B = UI.nueva; if (B.audio) URL.revokeObjectURL(B.audio.url); B.audio = null; B.transcripcion = ''; repintarCaptura(); };
+A.regrabar = () => { const B = UI.nueva; B.audio = null; B.transcripcion = ''; repintarCaptura(); };
 A.elegirRama = (el) => {
   const B = UI.nueva;
   const r = rama(el.dataset.id);
@@ -565,7 +617,7 @@ A.guardarNueva = async () => {
   const B = UI.nueva;
   if (B.grabando) { toast('Primero terminá la grabación'); return; }
   const texto = B.tipo === 'texto' ? B.texto.trim() : (B.transcripcion || '').trim();
-  if (B.tipo === 'texto' && !texto && !B.titulo.trim()) { toast('Escribí algo de tu idea'); document.getElementById('n-texto').focus(); return; }
+  if (B.tipo === 'texto' && !texto && !B.titulo.trim() && !B.fotos.length) { toast('Escribí algo de tu idea'); document.getElementById('n-texto').focus(); return; }
   if (B.tipo !== 'texto' && !B.audio) { toast('Primero grabá ' + (B.tipo === 'melodia' ? 'la melodía' : 'la nota de voz')); return; }
   const btn = document.getElementById('btn-guardar');
   btn.disabled = true;
@@ -575,13 +627,14 @@ A.guardarNueva = async () => {
     audioId = 'a-' + id;
     await db.guardar('audios', { id: audioId, blob: B.audio.blob, tipo: B.audio.blob.type });
   }
+  const fotos = B.tipo === 'melodia' ? [] : B.fotos;
+  for (const f of fotos) await db.guardar('fotos', { id: f.id, blob: f.blob, tipo: f.blob.type, ideaId: id });
   const idea = {
-    id, titulo: B.titulo.trim() || tituloAutomatico(texto, B.tipo), texto, tipo: B.tipo, audioId,
+    id, titulo: B.titulo.trim() || tituloAutomatico(texto, B.tipo), texto, tipo: B.tipo, audioId, fotos: fotos.map((f) => f.id),
     duracion: B.audio ? B.audio.duracion : 0, ramaId: B.ramaId, ramita: B.ramita, estado: 'semilla',
     notas: [], recordatorios: B.recs, creada: Date.now()
   };
   await guardarIdea(idea);
-  if (B.audio) URL.revokeObjectURL(B.audio.url);
   UI.nueva = null;
   toast('¡Idea guardada! 🌱');
   location.hash = '#/idea/' + encodeURIComponent(id);
@@ -644,6 +697,12 @@ function pintarFiltros() {
   document.getElementById('i-estados').innerHTML = ['todas', 'semilla', 'brote', 'flor'].map((e) =>
     `<button type="button" class="${U.estado === e ? 'on' : ''}" data-a="iEstado" data-e="${e}" style="height:40px">${PLURAL[e]}</button>`).join('');
 }
+async function cargarMiniaturas() {
+  for (const img of document.querySelectorAll('#i-lista img[data-foto]')) {
+    const f = await db.obtener('fotos', img.dataset.foto);
+    if (f && img.isConnected) img.src = urlDe(f.blob);
+  }
+}
 function pintarLista() {
   const U = UI.ideas;
   const q = U.q.trim().toLowerCase();
@@ -661,8 +720,9 @@ function pintarLista() {
         <span class="t">${h(i.titulo)}</span>
         ${i.texto && i.texto !== i.titulo ? `<span class="n">${h(i.texto)}</span>` : (i.tipo !== 'texto' ? `<span class="n">${i.tipo === 'melodia' ? 'Melodía' : 'Nota de voz'} de ${formatoTiempo(i.duracion || 0)}</span>` : '')}
         <div class="fila entre" style="margin-top:4px"><span class="meta">${h(ubicacion(i))} · ${hace(i.creada)}</span><span class="estado est-${i.estado}">${ESTADOS[i.estado]}</span></div>
-      </div></a>`).join('')
+      </div>${(i.fotos || []).length ? `<img class="mini-card" data-foto="${i.fotos[0]}" alt="">` : ''}</a>`).join('')
     : `<div class="vacio">${S.ideas.length ? 'No hay ideas con este filtro.' : 'Todavía no guardaste ideas. Tocá + para la primera.'}</div>`;
+  cargarMiniaturas();
 }
 A.buscar = (el) => { UI.ideas.q = el.value; pintarLista(); };
 A.iRama = (el) => {
@@ -701,6 +761,7 @@ async function vDetalle(id) {
     </div>
     ${idea.audioId ? '<div class="card" id="d-audio" style="padding:12px 14px"><span class="meta">Cargando audio…</span></div>' : ''}
     ${idea.texto && idea.texto !== idea.titulo ? `<div class="card" style="font-size:16px;font-weight:600;line-height:1.5;white-space:pre-wrap">${h(idea.texto)}</div>` : ''}
+    ${idea.tipo !== 'melodia' || (idea.fotos || []).length ? `<div class="col" style="gap:10px"><span style="font-size:16px;font-weight:800">Fotos</span><div id="d-fotos"></div></div>` : ''}
     <div class="card col" style="gap:10px">
       <span class="label">¿En qué estado está?</span>
       <div class="estados" role="group" aria-label="Estado de la idea">
@@ -722,18 +783,65 @@ async function vDetalle(id) {
       <div id="d-recs">${htmlRecs(idea.recordatorios || [], { conCalendario: true })}</div>
     </div>`;
   document.getElementById('d-nota').addEventListener('keydown', (e) => { if (e.key === 'Enter') A.dNota(); });
+  pintarFotosDetalle(idea);
   if (idea.audioId) {
     const a = await db.obtener('audios', idea.audioId);
     const cont = document.getElementById('d-audio');
     if (cont && a) {
-      const url = URL.createObjectURL(a.blob);
+      const url = urlDe(a.blob);
       cont.innerHTML = `<audio controls preload="metadata" src="${url}"></audio><span class="meta">${idea.tipo === 'melodia' ? 'Melodía' : 'Nota de voz'} · ${formatoTiempo(idea.duracion || 0)}</span>`;
       cont.classList.add('col');
-      limpiarVista = () => URL.revokeObjectURL(url);
     } else if (cont) cont.innerHTML = '<span class="meta">No encontré el audio.</span>';
   }
 }
 const ideaActual = () => S.ideas.find((i) => i.id === ruta().id);
+async function pintarFotosDetalle(idea) {
+  const cont = document.getElementById('d-fotos');
+  if (!cont) return;
+  const fotos = [];
+  for (const id of idea.fotos || []) {
+    const f = await db.obtener('fotos', id);
+    if (f) fotos.push({ id, url: urlDe(f.blob) });
+  }
+  const c = document.getElementById('d-fotos');
+  if (c && enVista('idea')) c.innerHTML = htmlFotos(fotos, { quitar: 'dQuitarFoto', agregar: 'dAgregarFotos', ver: 'dVerFoto' });
+}
+A.dAgregarFotos = async (el) => {
+  const idea = ideaActual();
+  const files = [...el.files];
+  if (!files.length) return;
+  toast(files.length === 1 ? 'Agregando foto…' : 'Agregando fotos…');
+  for (const file of files) {
+    try {
+      const blob = await comprimirFoto(file);
+      const id = 'f-' + nuevoId();
+      await db.guardar('fotos', { id, blob, tipo: blob.type, ideaId: idea.id });
+      idea.fotos = (idea.fotos || []).concat([id]);
+    } catch (e) { toast('No pude abrir una de las fotos'); }
+  }
+  await guardarIdea(idea);
+  if (enVista('idea')) pintarFotosDetalle(idea);
+};
+async function borrarFoto(idea, id) {
+  idea.fotos = (idea.fotos || []).filter((x) => x !== id);
+  await db.borrar('fotos', id);
+  await guardarIdea(idea);
+  if (enVista('idea')) pintarFotosDetalle(idea);
+}
+A.dQuitarFoto = async (el) => {
+  const ok = await confirmarSheet({ titulo: '¿Quitar esta foto?', texto: 'La foto se borra de esta idea.', si: 'Quitar' });
+  if (ok) borrarFoto(ideaActual(), el.dataset.id);
+};
+A.dVerFoto = async (el) => {
+  const idea = ideaActual();
+  const f = await db.obtener('fotos', el.dataset.id);
+  if (!f) return;
+  const url = URL.createObjectURL(f.blob);
+  abrirSheet(`<span class="asa"></span><div class="visor"><img src="${url}" alt="Foto de la idea"></div>
+    <div class="fila"><button class="btn borde grow" style="color:var(--danger);border-color:#E2B5AD" data-sa="borrar">${I.tacho}Quitar</button><button class="btn grow" data-sa="cerrar">Cerrar</button></div>`, {
+    borrar: async () => { cerrarSheet(); URL.revokeObjectURL(url); borrarFoto(idea, el.dataset.id); }
+  });
+};
 A.dEstado = async (el) => {
   const idea = ideaActual();
   const antes = idea.estado;
@@ -771,6 +879,7 @@ A.dMenu = () => {
       const ok = await confirmarSheet({ titulo: '¿Borrar esta idea?', texto: '"' + idea.titulo + '" se borra para siempre, con sus notas y su audio.' });
       if (!ok) return;
       if (idea.audioId) await db.borrar('audios', idea.audioId);
+      for (const fid of idea.fotos || []) await db.borrar('fotos', fid);
       await db.borrar('ideas', idea.id);
       S.ideas = S.ideas.filter((i) => i.id !== idea.id);
       toast('Idea borrada');
@@ -962,7 +1071,8 @@ A.aExportar = async () => {
   const copia = {
     app: 'nomeolvides', version: 1, fecha: new Date().toISOString(), nombre: S.nombre,
     ramas: S.ramas, ideas: S.ideas,
-    audios: await Promise.all(audios.map(async (a) => ({ id: a.id, tipo: a.tipo, datos: await blobA64(a.blob) })))
+    audios: await Promise.all(audios.map(async (a) => ({ id: a.id, tipo: a.tipo, datos: await blobA64(a.blob) }))),
+    fotos: await Promise.all((await db.todos('fotos')).map(async (f) => ({ id: f.id, tipo: f.tipo, ideaId: f.ideaId, datos: await blobA64(f.blob) })))
   };
   const blob = new Blob([JSON.stringify(copia)], { type: 'application/json' });
   const nombre = 'nomeolvides-copia-' + hoyISO() + '.json';
@@ -989,6 +1099,10 @@ async function importar(e) {
     for (const a of copia.audios || []) {
       const blob = await (await fetch(a.datos)).blob();
       await db.guardar('audios', { id: a.id, blob, tipo: a.tipo });
+    }
+    for (const f of copia.fotos || []) {
+      const blob = await (await fetch(f.datos)).blob();
+      await db.guardar('fotos', { id: f.id, blob, tipo: f.tipo, ideaId: f.ideaId });
     }
     if (copia.nombre && !S.nombre) await db.setMeta('nombre', copia.nombre);
     await cargar();

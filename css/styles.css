@@ -194,3 +194,12 @@ audio { width: 100%; height: 44px; }
 
 .guardar-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; width: 100%; max-width: 560px; padding: 14px 20px calc(18px + var(--safe-b)); background: var(--bg); border-top: 1px solid var(--line); z-index: 20; }
 .guardar-bar .btn { width: 100%; }
+
+/* ---------- fotos ---------- */
+.fotos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.foto-mini { position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden; background: var(--soft); border: none; padding: 0; }
+.foto-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.foto-mini .quitar { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; border-radius: 15px; border: none; background: rgba(15, 22, 40, .65); color: #FFF; display: flex; align-items: center; justify-content: center; }
+.foto-add { aspect-ratio: 1; border-radius: 14px; border: 1.5px dashed #9AA6BD; color: var(--blue-link); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 800; cursor: pointer; background: transparent; }
+.mini-card { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; flex-shrink: 0; background: var(--soft); }
+.visor img { width: 100%; max-height: 68vh; object-fit: contain; border-radius: 16px; background: #0F1628; }

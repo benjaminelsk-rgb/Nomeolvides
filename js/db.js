@@ -1,6 +1,6 @@
 // Base de datos local (IndexedDB). Todo se guarda en el dispositivo.
 const NOMBRE = 'nomeolvides';
-const VERSION = 1;
+const VERSION = 2;
 let dbPromise = null;
 
 function abrir() {
@@ -13,6 +13,7 @@ function abrir() {
       if (!db.objectStoreNames.contains('ramas')) db.createObjectStore('ramas', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('audios')) db.createObjectStore('audios', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'clave' });
+      if (!db.objectStoreNames.contains('fotos')) db.createObjectStore('fotos', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
