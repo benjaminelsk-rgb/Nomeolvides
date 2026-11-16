@@ -1,16 +1,16 @@
 // Service worker: guarda la app para que funcione sin internet.
-const VERSION = 'nomeolvides-v6';
+const VERSION = 'nomeolvides-v7';
 const ARCHIVOS = [
   './',
   'index.html',
-  'css/styles.css',
-  'js/app.js',
+  'css/styles.css?v=7',
+  'js/app.js?v=7',
   'js/db.js',
   'js/recorder.js',
   'js/reminders.js',
   'js/suggest.js',
   'js/sync.js',
-  'vendor/supabase.js',
+  'vendor/supabase.js?v=7',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -18,7 +18,7 @@ const ARCHIVOS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(ARCHIVOS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(ARCHIVOS.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -38,7 +38,7 @@ self.addEventListener('fetch', (e) => {
   const fuentes = url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com');
   if (!propio && !fuentes) return;
   e.respondWith(
-    fetch(req)
+    fetch(propio ? new Request(req, { cache: 'no-cache' }) : req)
       .then((res) => {
         if (res && (res.ok || res.type === 'opaque')) {
           const copia = res.clone();

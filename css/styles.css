@@ -218,7 +218,7 @@ audio { width: 100%; height: 44px; }
 .solo-pc { display: none !important; }
 .inicio-grid, .col-principal, .dos-col, .dos-col > .col-a, .dos-col > .col-b, .ramas-grid, .ajustes-grid { display: contents; }
 
-@media (min-width: 900px) {
+@media (min-width: 768px) {
   body { background: var(--bg); }
   #shell { max-width: none; display: grid; grid-template-columns: 264px minmax(0, 1fr); min-height: 100vh; }
   #tabbar { display: none !important; }
@@ -226,6 +226,7 @@ audio { width: 100%; height: 44px; }
     display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
     padding: 24px 16px 20px; background: #FFF; border-right: 1px solid var(--line);
   }
+  #lateral > * { flex-shrink: 0; }
   .lat-marca { gap: 10px; padding: 4px 8px 8px; }
   .lat-nueva { margin: 12px 0 14px; height: 50px; border-radius: 25px; font-size: 16px; text-decoration: none; }
   .lat-nueva.activa { box-shadow: 0 0 0 3px #C9D8FA; }
@@ -279,4 +280,14 @@ audio { width: 100%; height: 44px; }
 }
 @media (min-width: 1400px) {
   .inicio-grid { grid-template-columns: minmax(0, 1fr) 460px; }
+}
+
+@media (min-width: 768px) and (max-width: 1099px) {
+  #shell { grid-template-columns: 220px minmax(0, 1fr); }
+  #app { padding: 28px 28px 48px; }
+  .guardar-bar { margin: 8px -28px 0; padding: 14px 28px 18px; }
+  .inicio-grid, .dos-col { grid-template-columns: minmax(0, 1fr); }
+  .det-grid > .col-b { position: static; }
+  .ajustes-grid { grid-template-columns: minmax(0, 1fr); }
+  #toast { left: calc(50% + 110px); }
 }
