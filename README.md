@@ -8,4 +8,6 @@ App para guardar ideas (de negocios, canciones, clases, viajes… lo que sea) y 
 - Recordatorios como alarmas, y se pueden sumar al calendario del celular.
 - Funciona sin internet y se instala en el iPhone y en la compu.
 
-Tus ideas se guardan en tu dispositivo (no en este repositorio).
+Tus ideas se guardan en tu dispositivo y en tu cuenta (no en este repositorio).
+
+Creada por **Benjamin Elaskar Melo**.

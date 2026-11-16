@@ -39,6 +39,8 @@ const I = {
   brote: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-9"/><path d="M12 12c0-4-3-6-7-6 0 4 3 6 7 6z"/><path d="M12 11c0-3 2-5 6-5 0 3-2 5-6 5z"/></svg>',
   flor: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="2.2"/><circle cx="12" cy="6" r="3"/><circle cx="17.7" cy="10.1" r="3"/><circle cx="15.5" cy="16.9" r="3"/><circle cx="8.5" cy="16.9" r="3"/><circle cx="6.3" cy="10.1" r="3"/></svg>',
   camara: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>',
+  ojo: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  ojoNo: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
   logo: '<svg width="36" height="36" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 38V25M20 27l-6-6M20 27l6-6" stroke="#7E7165" stroke-width="3.2" stroke-linecap="round" fill="none"/><path d="M3 19C3 9 11 4 20 4s17 5 17 15c-7-1.5-27-1.5-34 0z" fill="#4C7034"/><circle cx="12" cy="12.5" r="2.6" fill="#4F7FE6"/><circle cx="21" cy="8.5" r="2.6" fill="#4F7FE6"/><circle cx="28.5" cy="13" r="2.6" fill="#4F7FE6"/></svg>'
 };
 
@@ -324,7 +326,7 @@ function vInicio() {
 
   $app.innerHTML = `
     <div class="fila entre header">
-      <div class="fila">${I.logo}<span class="marca">nomeolvides</span></div>
+      <button type="button" class="fila marca-btn" data-a="recargar" aria-label="Actualizar la app">${I.logo}<span class="marca">nomeolvides</span></button>
       <a href="#/ajustes" class="icon-btn" aria-label="Ajustes">${I.engranaje}</a>
     </div>
     <div class="col" style="gap:6px;margin-top:4px">
@@ -359,6 +361,17 @@ function vInicio() {
       <div style="font-size:15px;font-weight:600;color:#C9D6F5">Tocá el botón + de abajo para guardar una idea, una nota de voz o una melodía.</div></div>`}
   `;
 }
+A.recargar = async () => {
+  toast('Actualizando…');
+  try {
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    await Promise.race([
+      Promise.all([sync.sincronizar(), reg ? reg.update().catch(() => {}) : null]),
+      new Promise((r) => setTimeout(r, 4000))
+    ]);
+  } catch (e) { /* recargamos igual */ }
+  location.reload();
+};
 A.otraRiego = () => { UI.inicio.riegoIdx++; vInicio(); };
 A.verTodosAvisos = async () => {
   const ahora = Date.now();
@@ -1104,7 +1117,12 @@ function vAjustes() {
       <span class="label">Instalar la app</span>
       <span class="ayuda" style="font-size:14px"><b>iPhone:</b> abrila en Safari, tocá el botón Compartir y elegí "Agregar a pantalla de inicio".<br><b>Compu:</b> en Chrome o Edge, tocá el ícono de instalar en la barra de direcciones.</span>
     </div>
-    <span class="meta" style="text-align:center">Nomeolvides · versión 2.0</span>`;
+    <div class="card fila" style="gap:14px">
+      <img src="icons/icon-192.png" alt="" width="56" height="56" style="border-radius:14px;border:1px solid var(--line)">
+      <div class="col" style="gap:2px"><span style="font-size:17px;font-weight:800">Nomeolvides</span>
+        <span style="font-size:14px;font-weight:600;color:var(--muted)">Creada por <b style="color:var(--ink)">Benjamin Elaskar Melo</b></span>
+        <span class="meta">Versión 2.1</span></div>
+    </div>`;
   document.getElementById('a-importar').addEventListener('change', importar);
 }
 function htmlCuenta() {
@@ -1123,6 +1141,23 @@ function htmlCuenta() {
     <span class="ayuda" style="font-size:14px">${h(linea)}</span>
     <div class="fila"><button type="button" class="btn chico borde grow" data-a="syncAhora">Sincronizar ahora</button>
     <button type="button" class="btn chico suave" data-a="cuentaSalir">Cerrar sesión</button></div>`;
+}
+function campoClave(id, etiqueta, auto, si) {
+  return `<div class="col"><label class="label" for="${id}">${etiqueta}</label>
+    <div class="campo-clave"><input id="${id}" class="input" type="password" autocomplete="${auto}" data-si="${si}" minlength="6" style="padding-right:54px">
+    <button type="button" class="ojo" data-sa="ojo" data-para="${id}" aria-label="Mostrar contraseña" aria-pressed="false">${I.ojo}</button></div></div>`;
+}
+const claveVisible = {};
+function alternarOjo(el) {
+  const inp = document.getElementById(el.dataset.para);
+  if (!inp) return;
+  const ver = inp.type === 'password';
+  claveVisible[el.dataset.para] = ver;
+  inp.type = ver ? 'text' : 'password';
+  el.innerHTML = ver ? I.ojoNo : I.ojo;
+  el.setAttribute('aria-label', ver ? 'Ocultar contraseña' : 'Mostrar contraseña');
+  el.setAttribute('aria-pressed', String(ver));
+  inp.focus();
 }
 function pintarCuenta() { const c = document.getElementById('a-cuenta'); if (c) c.innerHTML = htmlCuenta(); }
 A.syncAhora = async () => { const p = sync.sincronizar(); pintarCuenta(); await p; pintarCuenta(); toast(sync.estado.error ? 'No se pudo sincronizar' : 'Todo sincronizado ✓'); };
@@ -1144,28 +1179,34 @@ A.cuentaEntrar = () => {
       <input id="c-mail" class="input" type="email" autocomplete="email" inputmode="email" value="${h(st.email)}" data-si="mail" autofocus></div>
     ${st.modo === 'olvido' ? `<button type="button" class="btn" data-sa="olvido" ${st.cargando ? 'disabled' : ''}>Mandarme un mail</button>
       <button type="button" class="link-btn" data-sa="volver">Volver</button>` : `
-    <div class="col"><label class="label" for="c-clave">Contraseña</label>
-      <input id="c-clave" class="input" type="password" autocomplete="current-password" value="${h(st.clave)}" data-si="clave" minlength="6"></div>
+    ${campoClave('c-clave', 'Contraseña', 'current-password', 'clave')}
     <button type="button" class="btn" data-sa="entrar" ${st.cargando ? 'disabled' : ''}>${st.cargando ? 'Un momento…' : 'Entrar'}</button>
     <button type="button" class="btn borde" data-sa="crear" ${st.cargando ? 'disabled' : ''}>Crear cuenta nueva</button>
     <button type="button" class="link-btn" data-sa="irOlvido">Me olvidé la contraseña</button>`}`;
   const validar = () => {
-    if (!/^\S+@\S+\.\S+$/.test(st.email.trim())) { st.error = 'Revisá el mail.'; actualizarSheet(html()); return false; }
-    if (st.modo !== 'olvido' && st.clave.length < 6) { st.error = 'La contraseña tiene que tener al menos 6 caracteres.'; actualizarSheet(html()); return false; }
+    if (!/^\S+@\S+\.\S+$/.test(st.email.trim())) { st.error = 'Revisá el mail.'; actualizarSheet(html()); restaurarClave(); return false; }
+    if (st.modo !== 'olvido' && st.clave.length < 6) { st.error = 'La contraseña tiene que tener al menos 6 caracteres.'; actualizarSheet(html()); restaurarClave(); return false; }
     return true;
   };
   const correr = async (fn) => {
     if (!validar()) return;
-    st.cargando = true; st.error = ''; st.msg = ''; actualizarSheet(html());
+    st.cargando = true; st.error = ''; st.msg = ''; actualizarSheet(html()); restaurarClave();
     try { await fn(); } catch (err) { st.error = err.message; }
     st.cargando = false;
-    if (capa) actualizarSheet(html());
+    if (capa) { actualizarSheet(html()); restaurarClave(); }
+  };
+  const restaurarClave = () => {
+    const c = document.getElementById('c-clave');
+    if (!c) return;
+    if (st.clave) c.value = st.clave;
+    if (claveVisible['c-clave']) { claveVisible['c-clave'] = false; alternarOjo(capa.querySelector('[data-para="c-clave"]')); document.activeElement.blur(); }
   };
   abrirSheet(html(), {
+    ojo: (el) => alternarOjo(el),
     mail: (el) => { st.email = el.value; },
     clave: (el) => { st.clave = el.value; },
     irOlvido: () => { st.modo = 'olvido'; st.error = ''; st.msg = ''; actualizarSheet(html()); },
-    volver: () => { st.modo = 'entrar'; st.error = ''; st.msg = ''; actualizarSheet(html()); },
+    volver: () => { st.modo = 'entrar'; st.error = ''; st.msg = ''; actualizarSheet(html()); restaurarClave(); },
     entrar: () => correr(async () => {
       await sync.entrar(st.email.trim(), st.clave);
       cerrarSheet(); toast('¡Listo! Tus ideas se sincronizan solas'); pintarCuenta();
@@ -1184,8 +1225,9 @@ A.cuentaEntrar = () => {
 function sheetNuevaClave() {
   let clave = '';
   abrirSheet(`<span class="asa"></span><span class="titulo-pant" style="font-size:20px">Elegí una contraseña nueva</span>
-    <div class="col"><label class="label" for="c-nueva">Contraseña nueva</label><input id="c-nueva" class="input" type="password" autocomplete="new-password" data-si="c" autofocus></div>
+    ${campoClave('c-nueva', 'Contraseña nueva', 'new-password', 'c')}
     <button type="button" class="btn" data-sa="ok">Guardar</button>`, {
+    ojo: (el) => alternarOjo(el),
     c: (el) => { clave = el.value; },
     ok: async () => {
       if (clave.length < 6) { toast('Al menos 6 caracteres'); return; }

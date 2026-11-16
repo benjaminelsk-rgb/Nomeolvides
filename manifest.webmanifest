@@ -1,7 +1,7 @@
 {
   "name": "Nomeolvides",
   "short_name": "Nomeolvides",
-  "description": "Guardá tus ideas y no te olvides de ninguna.",
+  "description": "Guardá tus ideas y no te olvides de ninguna. Creada por Benjamin Elaskar Melo.",
   "lang": "es",
   "start_url": "./#/inicio",
   "scope": "./",

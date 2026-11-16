@@ -206,3 +206,7 @@ audio { width: 100%; height: 44px; }
 
 .girando { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--line-2); border-top-color: var(--blue); animation: girar .8s linear infinite; flex-shrink: 0; }
 @keyframes girar { to { transform: rotate(360deg); } }
+
+.campo-clave { position: relative; }
+.campo-clave .ojo { position: absolute; right: 2px; top: 2px; width: 44px; height: 44px; border: none; background: transparent; color: var(--muted-2); display: flex; align-items: center; justify-content: center; border-radius: 12px; }
+.marca-btn { border: none; background: transparent; padding: 0; color: inherit; font: inherit; cursor: pointer; }
