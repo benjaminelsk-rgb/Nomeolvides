@@ -2,6 +2,7 @@ import { db, nuevoId } from './db.js';
 import { Grabadora, puedeGrabar, puedeTranscribir, formatoTiempo } from './recorder.js';
 import { describir, pendientes, crearICS, ORDEN_SEMANA, NOMBRES_DIA } from './reminders.js';
 import { sugerirRama, sugerirRamita, tituloAutomatico } from './suggest.js';
+import * as sync from './sync.js';
 
 /* =====================================================================
    Utilidades
@@ -118,11 +119,14 @@ const rama = (id) => S.ramas.find((r) => r.id === id) || null;
 async function guardarIdea(idea) {
   idea.actualizada = Date.now();
   await db.guardar('ideas', idea);
+  sync.marcarSucio('idea', idea.id);
   const i = S.ideas.findIndex((x) => x.id === idea.id);
   if (i >= 0) S.ideas[i] = idea; else S.ideas.push(idea);
 }
 async function guardarRama(r) {
+  r.actualizada = Date.now();
   await db.guardar('ramas', r);
+  sync.marcarSucio('rama', r.id);
   const i = S.ramas.findIndex((x) => x.id === r.id);
   if (i >= 0) S.ramas[i] = r; else S.ramas.unshift(r);
 }
@@ -594,8 +598,8 @@ A.crearRama = async () => {
     const usados = S.ramas.map((x) => x.color);
     const color = (PALETA.find(([c]) => !usados.includes(c)) || PALETA[0])[0];
     r = { id: nuevoId(), nombre, color, ramitas: [], orden: S.ramas.length };
-    await db.guardar('ramas', r);
-    S.ramas.push(r);
+    await guardarRama(r);
+    S.ramas = S.ramas.filter((x) => x.id !== r.id).concat([r]);
   }
   const B = UI.nueva;
   B.ramaId = r.id; B.ramita = null; B.ramaElegida = true; B.creandoRama = false; B.verRamitas = true;
@@ -825,6 +829,7 @@ A.dAgregarFotos = async (el) => {
 async function borrarFoto(idea, id) {
   idea.fotos = (idea.fotos || []).filter((x) => x !== id);
   await db.borrar('fotos', id);
+  sync.borrarArchivoRemoto(id);
   await guardarIdea(idea);
   if (enVista('idea')) pintarFotosDetalle(idea);
 }
@@ -878,9 +883,10 @@ A.dMenu = () => {
     borrar: async () => {
       const ok = await confirmarSheet({ titulo: '¿Borrar esta idea?', texto: '"' + idea.titulo + '" se borra para siempre, con sus notas y su audio.' });
       if (!ok) return;
-      if (idea.audioId) await db.borrar('audios', idea.audioId);
-      for (const fid of idea.fotos || []) await db.borrar('fotos', fid);
+      if (idea.audioId) { await db.borrar('audios', idea.audioId); sync.borrarArchivoRemoto(idea.audioId); }
+      for (const fid of idea.fotos || []) { await db.borrar('fotos', fid); sync.borrarArchivoRemoto(fid); }
       await db.borrar('ideas', idea.id);
+      sync.marcarSucio('idea', idea.id);
       S.ideas = S.ideas.filter((i) => i.id !== idea.id);
       toast('Idea borrada');
       location.hash = '#/ideas';
@@ -999,6 +1005,7 @@ A.rBorrarNo = () => { UI.ramas.confirmando = null; if (enVista('ramas')) vRamas(
 A.rBorrarSi = async (el) => {
   const id = el.dataset.id;
   await db.borrar('ramas', id);
+  sync.marcarSucio('rama', id);
   S.ramas = S.ramas.filter((r) => r.id !== id);
   for (const i of S.ideas.filter((x) => x.ramaId === id)) { i.ramaId = null; i.ramita = null; await guardarIdea(i); }
   UI.ramas.confirmando = null;
@@ -1030,6 +1037,7 @@ function vAjustes() {
   const notif = 'Notification' in window;
   $app.innerHTML = `
     <div class="fila entre header"><a href="#/inicio" class="icon-btn" aria-label="Volver al inicio">${I.atras}</a><span class="titulo-pant">Ajustes</span><span style="width:44px"></span></div>
+    <div class="card col" style="gap:10px" id="a-cuenta">${htmlCuenta()}</div>
     <div class="card col" style="gap:10px">
       <label class="label" for="a-nombre">¿Cómo te llamás?</label>
       <div class="fila" style="gap:8px"><input id="a-nombre" class="input grow" value="${h(S.nombre)}" placeholder="Para saludarte en el inicio" maxlength="30">
@@ -1037,7 +1045,7 @@ function vAjustes() {
     </div>
     <div class="card col" style="gap:10px">
       <span class="label">Copia de seguridad</span>
-      <span class="ayuda" style="font-size:14px">Por ahora tus ideas se guardan solo en este dispositivo. Descargá una copia cada tanto, y usala para pasar tus ideas a otro dispositivo.</span>
+      <span class="ayuda" style="font-size:14px">Un archivo con todas tus ideas, audios y fotos, por las dudas.</span>
       <button type="button" class="btn chico" data-a="aExportar">Descargar copia</button>
       <label class="btn chico borde" style="cursor:pointer">Cargar una copia<input type="file" accept="application/json,.json" class="sr-only" id="a-importar"></label>
     </div>
@@ -1050,12 +1058,100 @@ function vAjustes() {
       <span class="label">Instalar la app</span>
       <span class="ayuda" style="font-size:14px"><b>iPhone:</b> abrila en Safari, tocá el botón Compartir y elegí "Agregar a pantalla de inicio".<br><b>Compu:</b> en Chrome o Edge, tocá el ícono de instalar en la barra de direcciones.</span>
     </div>
-    <span class="meta" style="text-align:center">Nomeolvides · versión 1.0</span>`;
+    <span class="meta" style="text-align:center">Nomeolvides · versión 2.0</span>`;
   document.getElementById('a-importar').addEventListener('change', importar);
 }
+function htmlCuenta() {
+  const u = sync.usuarioActual();
+  if (!sync.sb) return '<span class="label">Tu cuenta</span><span class="ayuda" style="font-size:14px">La sincronización no está disponible en este navegador.</span>';
+  if (!u) {
+    return `<span class="label">Tus ideas en todos lados</span>
+      <span class="ayuda" style="font-size:14px">Entrá con tu mail para tener las mismas ideas en el celular y en la compu. Si no entrás, se guardan solo en este dispositivo.</span>
+      <button type="button" class="btn chico" data-a="cuentaEntrar">Entrar o crear cuenta</button>`;
+  }
+  const e = sync.estado;
+  const cuando = e.ultima ? new Date(e.ultima).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
+  const linea = e.sincronizando ? 'Sincronizando…' : e.error ? 'No se pudo sincronizar. Se reintenta solo cuando haya internet.' : cuando ? 'Sincronizado · ' + cuando : 'Todavía no se sincronizó.';
+  return `<span class="label">Tu cuenta</span>
+    <span style="font-size:15px;font-weight:700;word-break:break-all">${h(u.email)}</span>
+    <span class="ayuda" style="font-size:14px">${h(linea)}</span>
+    <div class="fila"><button type="button" class="btn chico borde grow" data-a="syncAhora">Sincronizar ahora</button>
+    <button type="button" class="btn chico suave" data-a="cuentaSalir">Cerrar sesión</button></div>`;
+}
+function pintarCuenta() { const c = document.getElementById('a-cuenta'); if (c) c.innerHTML = htmlCuenta(); }
+A.syncAhora = async () => { const p = sync.sincronizar(); pintarCuenta(); await p; pintarCuenta(); toast(sync.estado.error ? 'No se pudo sincronizar' : 'Todo sincronizado ✓'); };
+A.cuentaSalir = async () => {
+  const ok = await confirmarSheet({ titulo: '¿Cerrar sesión?', texto: 'Tus ideas quedan guardadas en este dispositivo y en tu cuenta. Los cambios nuevos no se van a sincronizar hasta que vuelvas a entrar.', si: 'Cerrar sesión' });
+  if (!ok) return;
+  await sync.salir();
+  pintarCuenta();
+  toast('Sesión cerrada');
+};
+A.cuentaEntrar = () => {
+  const st = { email: '', clave: '', msg: '', error: '', cargando: false, modo: 'entrar' };
+  const html = () => `<span class="asa"></span>
+    <div class="fila entre"><span class="titulo-pant" style="font-size:20px">${st.modo === 'olvido' ? 'Recuperar contraseña' : 'Tu cuenta'}</span>
+      <button class="icon-btn" style="background:#F2F4F9;border:none" data-sa="cerrar" aria-label="Cerrar">${I.x}</button></div>
+    ${st.msg ? `<div class="aviso-banner" style="background:#E3F0D8;border-color:#C5DDB1;font-size:15px;font-weight:700;color:#355A22">${h(st.msg)}</div>` : ''}
+    ${st.error ? `<div class="confirmar" role="alert">${h(st.error)}</div>` : ''}
+    <div class="col"><label class="label" for="c-mail">Mail</label>
+      <input id="c-mail" class="input" type="email" autocomplete="email" inputmode="email" value="${h(st.email)}" data-si="mail" autofocus></div>
+    ${st.modo === 'olvido' ? `<button type="button" class="btn" data-sa="olvido" ${st.cargando ? 'disabled' : ''}>Mandarme un mail</button>
+      <button type="button" class="link-btn" data-sa="volver">Volver</button>` : `
+    <div class="col"><label class="label" for="c-clave">Contraseña</label>
+      <input id="c-clave" class="input" type="password" autocomplete="current-password" value="${h(st.clave)}" data-si="clave" minlength="6"></div>
+    <button type="button" class="btn" data-sa="entrar" ${st.cargando ? 'disabled' : ''}>${st.cargando ? 'Un momento…' : 'Entrar'}</button>
+    <button type="button" class="btn borde" data-sa="crear" ${st.cargando ? 'disabled' : ''}>Crear cuenta nueva</button>
+    <button type="button" class="link-btn" data-sa="irOlvido">Me olvidé la contraseña</button>`}`;
+  const validar = () => {
+    if (!/^\S+@\S+\.\S+$/.test(st.email.trim())) { st.error = 'Revisá el mail.'; actualizarSheet(html()); return false; }
+    if (st.modo !== 'olvido' && st.clave.length < 6) { st.error = 'La contraseña tiene que tener al menos 6 caracteres.'; actualizarSheet(html()); return false; }
+    return true;
+  };
+  const correr = async (fn) => {
+    if (!validar()) return;
+    st.cargando = true; st.error = ''; st.msg = ''; actualizarSheet(html());
+    try { await fn(); } catch (err) { st.error = err.message; }
+    st.cargando = false;
+    if (capa) actualizarSheet(html());
+  };
+  abrirSheet(html(), {
+    mail: (el) => { st.email = el.value; },
+    clave: (el) => { st.clave = el.value; },
+    irOlvido: () => { st.modo = 'olvido'; st.error = ''; st.msg = ''; actualizarSheet(html()); },
+    volver: () => { st.modo = 'entrar'; st.error = ''; st.msg = ''; actualizarSheet(html()); },
+    entrar: () => correr(async () => {
+      await sync.entrar(st.email.trim(), st.clave);
+      cerrarSheet(); toast('¡Listo! Tus ideas se sincronizan solas'); pintarCuenta();
+    }),
+    crear: () => correr(async () => {
+      const r = await sync.crearCuenta(st.email.trim(), st.clave);
+      if (r.listo) { cerrarSheet(); toast('¡Cuenta creada!'); pintarCuenta(); return; }
+      st.msg = 'Te mandamos un mail a ' + st.email.trim() + '. Tocá el link para confirmar la cuenta y después volvé acá y tocá "Entrar".';
+    }),
+    olvido: () => correr(async () => {
+      await sync.recuperarClave(st.email.trim());
+      st.msg = 'Te mandamos un mail con un link para elegir una contraseña nueva.';
+    })
+  });
+};
+function sheetNuevaClave() {
+  let clave = '';
+  abrirSheet(`<span class="asa"></span><span class="titulo-pant" style="font-size:20px">Elegí una contraseña nueva</span>
+    <div class="col"><label class="label" for="c-nueva">Contraseña nueva</label><input id="c-nueva" class="input" type="password" autocomplete="new-password" data-si="c" autofocus></div>
+    <button type="button" class="btn" data-sa="ok">Guardar</button>`, {
+    c: (el) => { clave = el.value; },
+    ok: async () => {
+      if (clave.length < 6) { toast('Al menos 6 caracteres'); return; }
+      try { await sync.cambiarClave(clave); cerrarSheet(); toast('Contraseña cambiada ✓'); } catch (e) { toast(e.message); }
+    }
+  });
+}
+
 A.aNombre = async () => {
   S.nombre = document.getElementById('a-nombre').value.trim();
   await db.setMeta('nombre', S.nombre);
+  sync.marcarSucio('perfil', 'nombre');
   toast('¡Listo' + (S.nombre ? ', ' + S.nombre : '') + '!');
 };
 A.aNotif = async () => {
@@ -1094,8 +1190,8 @@ async function importar(e) {
     if (copia.app !== 'nomeolvides') throw new Error('formato');
     const ok = await confirmarSheet({ titulo: '¿Cargar esta copia?', texto: 'Se suman ' + copia.ideas.length + ' ideas y sus ramas. Si una idea ya existe, se reemplaza por la de la copia.', si: 'Cargar', peligro: false });
     if (!ok) return;
-    for (const r of copia.ramas) await db.guardar('ramas', r);
-    for (const i of copia.ideas) await db.guardar('ideas', i);
+    for (const r of copia.ramas) { await db.guardar('ramas', r); sync.marcarSucio('rama', r.id); }
+    for (const i of copia.ideas) { await db.guardar('ideas', i); sync.marcarSucio('idea', i.id); }
     for (const a of copia.audios || []) {
       const blob = await (await fetch(a.datos)).blob();
       await db.guardar('audios', { id: a.id, blob, tipo: a.tipo });
@@ -1140,7 +1236,18 @@ async function revisarAvisos() {
 (async function iniciar() {
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* nada */ }
   await cargar();
+  try { await sync.iniciarSesion(); } catch (e) { /* sin conexión */ }
+  sync.alCambiar(async (c) => {
+    if (c.recuperar) { sheetNuevaClave(); return; }
+    if (c.datos) {
+      await cargar();
+      const v = ruta().vista;
+      if (!capa && v !== 'nueva') render();
+    }
+    if (enVista('ajustes')) pintarCuenta();
+  });
   render();
+  sync.arrancarAutomatico();
   revisarAvisos();
   setInterval(revisarAvisos, 30000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) revisarAvisos(); });

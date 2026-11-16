@@ -1,5 +1,5 @@
 // Service worker: guarda la app para que funcione sin internet.
-const VERSION = 'nomeolvides-v2';
+const VERSION = 'nomeolvides-v3';
 const ARCHIVOS = [
   './',
   'index.html',
@@ -9,6 +9,8 @@ const ARCHIVOS = [
   'js/recorder.js',
   'js/reminders.js',
   'js/suggest.js',
+  'js/sync.js',
+  'vendor/supabase.js',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
